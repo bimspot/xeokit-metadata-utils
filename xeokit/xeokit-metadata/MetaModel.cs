@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Dynamic;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
@@ -32,6 +33,7 @@ namespace XeokitMetadata {
     ///   The GlobalId of the parent element if any.
     /// </summary>
     public string parent;
+    public List<dynamic> propertySets { get; set; }
   }
 
   /// <summary>
@@ -167,7 +169,7 @@ namespace XeokitMetadata {
         parent = parentId
       };
 
-      metaObjects.Add(parentObject);
+       metaObjects.Add(parentObject);
 
       var spatialElement = objectDefinition as IIfcSpatialStructureElement;
 
@@ -175,13 +177,42 @@ namespace XeokitMetadata {
         var containedElements = spatialElement
           .ContainsElements
           .SelectMany(rel => rel.RelatedElements);
-
+        List<dynamic> elements = new List<dynamic>();
         foreach (var element in containedElements) {
+          List<dynamic> retVal = new List<dynamic>();
+          var propSets = element.IsDefinedBy.Where(r => r.RelatingPropertyDefinition is IIfcPropertySet)
+            .Select(x => x.RelatingPropertyDefinition)
+            .Cast<IIfcPropertySet>();
+
+          foreach (var propSet in propSets)
+          {
+            dynamic pSetDynamic = new System.Dynamic.ExpandoObject();
+            pSetDynamic.name = propSet.Name.ToString();
+            pSetDynamic.properties = new List<dynamic>();
+            foreach (var property in propSet.HasProperties)
+            {
+              if (property is IIfcPropertySingleValue propSingleValue)
+              {
+                dynamic ppDynamic = new System.Dynamic.ExpandoObject();
+                {
+                  
+                  ppDynamic.name = propSingleValue.Name.Value;
+                  ppDynamic.value = propSingleValue.NominalValue == null
+                    ? string.Empty
+                    : propSingleValue.NominalValue.Value.ToString();
+                }
+                pSetDynamic.properties.Add(ppDynamic);
+              }
+            }
+            retVal.Add(pSetDynamic);
+          }
+          
           var mo = new MetaObject {
             id = element.GlobalId,
             name = element.Name,
             type = element.GetType().Name,
-            parent = spatialElement.GlobalId
+            parent = spatialElement.GlobalId,
+            propertySets = retVal
           };
           
           metaObjects.Add(mo);
@@ -259,4 +290,5 @@ namespace XeokitMetadata {
       return output;
     }
   }
+  
 }
