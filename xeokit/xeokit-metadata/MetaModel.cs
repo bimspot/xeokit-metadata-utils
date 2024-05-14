@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Dynamic;
 using System.IO;
@@ -286,8 +287,10 @@ namespace XeokitMetadata {
         Formatting = Formatting.Indented
       };
       
-      var output = JsonConvert.SerializeObject(this, settings);
+      // var output = JsonConvert.SerializeObject(this, settings);
+      var output = JsonConvert.SerializeObject(this, Formatting.None);
       return output;
+      ;
     }
   }
   
