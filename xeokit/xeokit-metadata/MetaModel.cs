@@ -184,9 +184,11 @@ namespace XeokitMetadata {
           var propSets = element.IsDefinedBy.Where(r => r.RelatingPropertyDefinition is IIfcPropertySet)
             .Select(x => x.RelatingPropertyDefinition)
             .Cast<IIfcPropertySet>();
-
+          var propSetNames = new List<string>();
           foreach (var propSet in propSets)
           {
+            if (propSetNames.Contains(propSet.Name.ToString())) continue;
+            propSetNames.Add(propSet.Name.ToString());
             dynamic pSetDynamic = new System.Dynamic.ExpandoObject();
             pSetDynamic.name = propSet.Name.ToString();
             pSetDynamic.properties = new List<dynamic>();
@@ -196,7 +198,6 @@ namespace XeokitMetadata {
               {
                 dynamic ppDynamic = new System.Dynamic.ExpandoObject();
                 {
-                  
                   ppDynamic.name = propSingleValue.Name.Value;
                   ppDynamic.value = propSingleValue.NominalValue == null
                     ? string.Empty
