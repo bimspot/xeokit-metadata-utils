@@ -1,10 +1,13 @@
+using System;
 using System.Collections.Generic;
+using System.Dynamic;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using Xbim.Ifc;
 using Xbim.Ifc4.Interfaces;
+using Xbim.Ifc4x3.ProductExtension;
 
 namespace XeokitMetadata {
   /// <summary>
@@ -32,6 +35,7 @@ namespace XeokitMetadata {
     ///   The GlobalId of the parent element if any.
     /// </summary>
     public string parent;
+    public List<dynamic> propertySets { get; set; }
   }
 
   /// <summary>
@@ -158,30 +162,107 @@ namespace XeokitMetadata {
     private static List<MetaObject> extractHierarchy(
       IIfcObjectDefinition objectDefinition, 
       string parentId=null) {
-      var metaObjects = new List<MetaObject>();
-
-      var parentObject = new MetaObject {
-        id = objectDefinition.GlobalId,
-        name = objectDefinition.Name,
-        type = objectDefinition.GetType().Name,
-        parent = parentId
-      };
-
+        var metaObjects = new List<MetaObject>();
+        var spatialBuiltElement = objectDefinition as IfcBuiltElement; 
+        if (spatialBuiltElement != null) {
+         var propertySets = spatialBuiltElement.IsDefinedBy
+           .Where(r => r.RelatingPropertyDefinition is IIfcPropertySet)
+           .Select(r => r.RelatingPropertyDefinition as IIfcPropertySet);
+          var propSetNames = new List<string>();
+          List<dynamic> retVal = new List<dynamic>();
+          foreach (var propSet in propertySets)
+          {
+            if (propSetNames.Contains(propSet.Name.ToString())) continue;
+            propSetNames.Add(propSet.Name.ToString());
+            dynamic pSetDynamic = new System.Dynamic.ExpandoObject();
+            pSetDynamic.name = propSet.Name.ToString();
+            pSetDynamic.properties = new List<dynamic>();
+            foreach (var property in propSet.HasProperties)
+            {
+              if (property is IIfcPropertySingleValue propSingleValue)
+              {
+                dynamic ppDynamic = new System.Dynamic.ExpandoObject();
+                {
+                  ppDynamic.name = propSingleValue.Name.Value;
+                  ppDynamic.value = propSingleValue.NominalValue == null
+                  ? string.Empty
+                  : propSingleValue.NominalValue.Value.ToString();
+                }
+                pSetDynamic.properties.Add(ppDynamic);
+              }
+            }
+            retVal.Add(pSetDynamic);
+            var mo = new MetaObject {
+              id = spatialBuiltElement.GlobalId,
+              name = spatialBuiltElement.Name,
+              type = spatialBuiltElement.GetType().Name,
+              parent = parentId,
+              propertySets = retVal
+            };
+          
+            metaObjects.Add(mo);
+            extractRelatedObjects(
+              spatialBuiltElement, 
+              ref metaObjects, 
+              mo.id);
+          }
+          extractRelatedObjects(
+            objectDefinition, 
+            ref metaObjects, 
+            spatialBuiltElement.GlobalId);
+      
+          return metaObjects;
+        }
+        var parentObject = new MetaObject {
+          id = objectDefinition.GlobalId,
+          name = objectDefinition.Name,
+          type = objectDefinition.GetType().Name,
+          parent = parentId
+       };
       metaObjects.Add(parentObject);
-
       var spatialElement = objectDefinition as IIfcSpatialStructureElement;
 
       if (spatialElement != null) {
         var containedElements = spatialElement
           .ContainsElements
           .SelectMany(rel => rel.RelatedElements);
-
+        List<dynamic> elements = new List<dynamic>();
         foreach (var element in containedElements) {
+          List<dynamic> retVal = new List<dynamic>();
+          var propSets = element.IsDefinedBy.Where(r => r.RelatingPropertyDefinition is IIfcPropertySet)
+            .Select(x => x.RelatingPropertyDefinition)
+            .Cast<IIfcPropertySet>();
+          var propSetNames = new List<string>();
+          foreach (var propSet in propSets)
+          {
+            if (propSetNames.Contains(propSet.Name.ToString())) continue;
+            propSetNames.Add(propSet.Name.ToString());
+            dynamic pSetDynamic = new System.Dynamic.ExpandoObject();
+            pSetDynamic.name = propSet.Name.ToString();
+            pSetDynamic.properties = new List<dynamic>();
+            foreach (var property in propSet.HasProperties)
+            {
+              if (property is IIfcPropertySingleValue propSingleValue)
+              {
+                dynamic ppDynamic = new System.Dynamic.ExpandoObject();
+                {
+                  ppDynamic.name = propSingleValue.Name.Value;
+                  ppDynamic.value = propSingleValue.NominalValue == null
+                    ? string.Empty
+                    : propSingleValue.NominalValue.Value.ToString();
+                }
+                pSetDynamic.properties.Add(ppDynamic);
+              }
+            }
+            retVal.Add(pSetDynamic);
+          }
+          
           var mo = new MetaObject {
             id = element.GlobalId,
             name = element.Name,
             type = element.GetType().Name,
-            parent = spatialElement.GlobalId
+            parent = spatialElement.GlobalId,
+            propertySets = retVal
           };
           
           metaObjects.Add(mo);
@@ -191,7 +272,6 @@ namespace XeokitMetadata {
             mo.id);
         }
       }
-
       extractRelatedObjects(
         objectDefinition, 
         ref metaObjects, 
@@ -255,8 +335,11 @@ namespace XeokitMetadata {
         Formatting = Formatting.Indented
       };
       
-      var output = JsonConvert.SerializeObject(this, settings);
+      // var output = JsonConvert.SerializeObject(this, settings);
+      var output = JsonConvert.SerializeObject(this, Formatting.None);
       return output;
+      ;
     }
   }
+  
 }
